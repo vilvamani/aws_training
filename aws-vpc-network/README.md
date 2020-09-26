@@ -4,7 +4,7 @@ This Cloudformation templates provides a networking foundation for AWS Cloud inf
 
 The Amazon VPC architecture includes public and private subnets. A set of private subnets share the default network access control list (ACL) from the Amazon VPC.
 
-![Amazon VPC Architecture](https://docs.aws.amazon.com/quickstart/latest/vpc/images/quickstart-vpc-design-fullscreen.png)
+![Amazon VPC Architecture](https://github.com/vilvamani/aws_training/blob/master/aws-vpc-network/docs/images/vpc_network_architecture.jpg)
 
 For additional information about these best practices, see the following
 documentation:
