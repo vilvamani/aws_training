@@ -1,0 +1,308 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+    Builds serverless API, complete with Lambda functions, API Gateway, SQS Queues, DynamoDB table, and an S3 bucket.
+Parameters:
+  Environment:
+    AllowedValues:
+      - demo
+      - training
+      - workshop
+      - dev
+      - test
+      - stage
+      - production
+    Default: training
+    Description: Name of the AWS Environment
+    Type: String
+  EnableLambdaXRay:
+    AllowedValues:
+      - Active
+      - PassThrough
+    Default: PassThrough
+    Description: Set Mode to Active to sample and trace a subset of incoming requests with AWS X-Ray.
+    Type: String
+
+Resources:
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Environment}-datalack-tbl"
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: date
+          AttributeType: S
+        - AttributeName: time
+          AttributeType: S
+      KeySchema:
+        - AttributeName: date
+          KeyType: HASH
+        - AttributeName: time
+          KeyType: RANGE
+
+  MessagingQueue:
+    Type: AWS::SQS::Queue
+    Description: Messaging Queue to decouple the Microservices
+    Properties:
+      QueueName: !Sub "${Environment}-datalack-queue"
+      MaximumMessageSize: 262144 # The limit of how many bytes that a message can contain before Amazon SQS rejects it. You can specify an integer value from 1,024 bytes (1 KiB) to 262,144 bytes (256 KiB). The default value is 262,144 (256 KiB).
+      MessageRetentionPeriod: 86400
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt:
+            - DeadLetterQueue
+            - Arn
+        maxReceiveCount: 5
+      VisibilityTimeout: 60
+
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Description: Dead leter queue to save failed message
+    Properties:
+      QueueName: !Sub "${Environment}-datalack-deadletterqueue"
+      VisibilityTimeout: 60
+
+  S3toSQSLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Description: Lambda execution role read data from s3 bucket
+    Properties:
+      RoleName: !Sub "${Environment}-S3toSQSLambdaExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+            - edgelambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: !Sub "${Environment}-AWSLambdaBasicExecutionRole"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: "*"
+        - PolicyName: !Sub "${Environment}-AmazonS3FullAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: s3:*
+              Resource:
+              - !Sub "arn:aws:s3:::${Environment}-datalack"
+              - !Sub "arn:aws:s3:::${Environment}-datalack/*"
+        - PolicyName: !Sub "${Environment}-produceToQueue"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt MessagingQueue.Arn
+        - PolicyName: !Sub "${Environment}-KMSFullAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: KMS:*
+              Resource: "*"
+        - PolicyName: !Sub "${Environment}-XRayAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "xray:*"
+                Resource: "*"
+
+  S3toSQSLambdaFuncation:
+    Type: AWS::Lambda::Function
+    Description: Responds to S3 Event - Sends to SQS
+    Properties:
+      Description: Responds to S3 Event - Sends to SQS
+      FunctionName: !Sub "${Environment}-S3toSQSLambdaFuncation"
+      Handler: lambda.lambda_handler
+      Role: !GetAtt S3toSQSLambdaExecutionRole.Arn
+      Runtime: python3.7
+      Timeout: 300
+      Environment:
+        Variables:
+          SQS_QUEUE_URL: !Ref MessagingQueue
+          TABLE_NAME: !Ref DynamoDBTable
+      TracingConfig:
+        Mode: !Ref EnableLambdaXRay
+      Code: 
+        S3Bucket: boomi-eks
+        S3Key: lambda_s3_to_sqs-1.0.0.zip
+
+  S3toSQSLambdaFuncationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref S3toSQSLambdaFuncation
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${Environment}-datalack'
+      SourceAccount: !Ref AWS::AccountId
+
+  DataLackBucketName:
+    DependsOn: 
+      - S3toSQSLambdaFuncationPermission
+    Type: AWS::S3::Bucket
+    Description: Data lack S3 bucket 
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub "${Environment}-datalack"
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Event: s3:ObjectCreated:*
+          Function: !GetAtt S3toSQSLambdaFuncation.Arn
+          Filter:
+            S3Key:
+              Rules:
+                - Name: suffix
+                  Value: .csv
+
+  SQStoDynamoDBLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Description: Lambda execution role read data from s3 bucket
+    Properties:
+      RoleName: !Sub "${Environment}-SQStoDynamoDBLambdaExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+            - edgelambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: !Sub "${Environment}-AWSLambdaBasicExecutionRole"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: "*"
+        - PolicyName: !Sub "${Environment}-AmazonDynamodbAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: 
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DynamoDBTable.Arn
+        - PolicyName: !Sub "${Environment}-SubscribeToQueueAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:DeleteMessageBatch
+                  - sqs:ReceiveMessage
+                Resource: !GetAtt MessagingQueue.Arn
+        - PolicyName: !Sub "${Environment}-KMSFullAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: KMS:*
+              Resource: "*"
+        - PolicyName: !Sub "${Environment}-XRayAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "xray:*"
+                Resource: "*"
+
+  SQStoDynamoDBLambdaFuncation:
+    Type: AWS::Lambda::Function
+    Description: Responds to SQS Event - Sends to Dynamodb
+    Properties:
+      Description: Post new message from SQS to DynamoDB
+      FunctionName: !Sub "${Environment}-SQStoDynamoDBLambdaFuncation"
+      Handler: lambda.lambda_handler
+      Role: !GetAtt SQStoDynamoDBLambdaExecutionRole.Arn
+      Runtime: python3.7
+      Timeout: 59
+      TracingConfig:
+        Mode: !Ref EnableLambdaXRay
+      Code: 
+        S3Bucket: boomi-eks
+        S3Key: lambda_sqs_to_dynamodb-1.0.0.zip
+
+  SQStoDynamoDBLambdaMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      FunctionName: !GetAtt SQStoDynamoDBLambdaFuncation.Arn
+      EventSourceArn: !GetAtt MessagingQueue.Arn
+
+Outputs:
+  DataLackBucketName:
+    Value: !Ref DataLackBucketName
+    Description: Data lack S3 bucket
+    Export:
+      Name: !Sub '${AWS::StackName}-DataLackBucketName'
+  DataLackBucketNameARN:
+    Value: !GetAtt DataLackBucketName.Arn
+    Description: Data lack S3 bucket ARN 
+    Export:
+      Name: !Sub '${AWS::StackName}-DataLackBucketNameARN'
+  S3toSQSLambdaExecutionRole:
+    Value: !GetAtt S3toSQSLambdaExecutionRole.Arn
+    Description: Lambda Funcation Role 
+    Export:
+      Name: !Sub '${AWS::StackName}-S3toSQSLambdaExecutionRoleARN'
+  S3toSQSLambdaFuncation:
+    Value: !Ref S3toSQSLambdaFuncation
+    Description: S3toSQS Lambda Funcation
+    Export:
+      Name: !Sub '${AWS::StackName}-S3toSQSLambdaFuncation'
+  MessagingQueue:
+    Value: !Ref MessagingQueue
+    Description: AWS SQS Queue 
+    Export:
+      Name: !Sub '${AWS::StackName}-MessagingQueue'
+  DeadLetterQueue:
+    Value: !Ref DeadLetterQueue
+    Description: AWS SQS Dead Letter Queue  
+    Export:
+      Name: !Sub '${AWS::StackName}-DeadLetterQueue'
+  MessagingQueueARN:
+    Value: !GetAtt MessagingQueue.Arn
+    Description: AWS SQS Queue 
+    Export:
+      Name: !Sub '${AWS::StackName}-MessagingQueueARN'
+  DeadLetterQueueARN:
+    Value: !GetAtt DeadLetterQueue.Arn
+    Description: AWS SQS Dead Letter Queue  
+    Export:
+      Name: !Sub '${AWS::StackName}-DeadLetterQueueARN'
+  SQStoDynamoDBLambdaFuncation:
+    Value: !Ref SQStoDynamoDBLambdaFuncation
+    Description: SQStoDynamoDB Lambda Funcation 
+    Export:
+      Name: !Sub '${AWS::StackName}-SQStoDynamoDBLambdaFuncation'
