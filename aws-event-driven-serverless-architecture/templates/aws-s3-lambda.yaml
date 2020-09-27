@@ -160,7 +160,7 @@ Resources:
       TracingConfig:
         Mode: !Ref EnableLambdaXRay
       Code: 
-        S3Bucket: boomi-eks
+        S3Bucket: aws-training-lambda-bucket
         S3Key: lambda_s3_to_sqs-1.0.0.zip
 
   S3toSQSLambdaFuncationPermission:
@@ -271,7 +271,7 @@ Resources:
       TracingConfig:
         Mode: !Ref EnableLambdaXRay
       Code: 
-        S3Bucket: boomi-eks
+        S3Bucket: aws-training-lambda-bucket
         S3Key: lambda_sqs_to_dynamodb-1.0.0.zip
 
   SQStoDynamoDBLambdaMapping:

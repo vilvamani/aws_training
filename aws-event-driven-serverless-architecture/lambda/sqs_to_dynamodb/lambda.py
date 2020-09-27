@@ -3,6 +3,8 @@ from json import loads
 
 import boto3
 
+from aws_xray_sdk.core import xray_recorder
+
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -11,7 +13,7 @@ logger.info('Loading function')
 
 dynamo_client = boto3.client('dynamodb')
 
-
+@xray_recorder.capture('## sqs_to_dynamodb_lambda_handler')
 def lambda_handler(event, context):
     logger.debug('Received event: {}'.format(event))
     operations = {

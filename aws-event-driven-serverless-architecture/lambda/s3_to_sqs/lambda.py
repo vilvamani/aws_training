@@ -6,6 +6,8 @@ import os
 import urllib.parse
 from botocore.exceptions import ClientError
 
+from aws_xray_sdk.core import xray_recorder
+
 # Set up logging
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -20,7 +22,7 @@ table_name = os.getenv("TABLE_NAME")
 sqs_client = boto3.client('sqs')
 s3_client = boto3.client('s3')
 
-
+@xray_recorder.capture('## s3_to_sqs_lambda_handler')
 def lambda_handler(event, context):
     logger.debug('Received event: {}'.format(event))
 
@@ -33,7 +35,7 @@ def lambda_handler(event, context):
     process_messages(messages)
     return 0
 
-
+@xray_recorder.capture('## read_csv_file')
 def read_csv_file(bucket, key):
     """
     Read messages from CSV file.
@@ -55,7 +57,7 @@ def read_csv_file(bucket, key):
                      .format(key, bucket))
         raise e
 
-
+@xray_recorder.capture('## process_messages')
 def process_messages(messages):
     """
     Process messages.
@@ -76,7 +78,7 @@ def process_messages(messages):
         logger.error(e)
         return -1
 
-
+@xray_recorder.capture('## convert_message')
 def convert_message(message):
     """
     Convert CSV file row to message dictionary object.
@@ -125,7 +127,7 @@ def convert_message(message):
     }
     return message
 
-
+@xray_recorder.capture('## send_sqs_message')
 def send_sqs_message(message):
     """
     Send JSON-format message to SQS.
