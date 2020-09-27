@@ -1,6 +1,27 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
     Builds serverless API, complete with Lambda functions, API Gateway, SQS Queues, DynamoDB table, and an S3 bucket.
+
+Metadata:
+  QuickStartDocumentation:
+    EntrypointName: "Launch a New VPC"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: AWS Environment Details
+        Parameters:
+          - Environment
+      - Label:
+          default: AWS Lambda Configuration
+        Parameters:
+          - EnableLambdaXRay
+          
+    ParameterLabels:
+      Environment:
+        default: Name of the Environment
+      EnableLambdaXRay:
+        default: Enable XRay to trace AWS Lambda performance
+
 Parameters:
   Environment:
     AllowedValues:
@@ -266,41 +287,49 @@ Outputs:
     Description: Data lack S3 bucket
     Export:
       Name: !Sub '${AWS::StackName}-DataLackBucketName'
+
   DataLackBucketNameARN:
     Value: !GetAtt DataLackBucketName.Arn
     Description: Data lack S3 bucket ARN 
     Export:
       Name: !Sub '${AWS::StackName}-DataLackBucketNameARN'
+
   S3toSQSLambdaExecutionRole:
     Value: !GetAtt S3toSQSLambdaExecutionRole.Arn
     Description: Lambda Funcation Role 
     Export:
       Name: !Sub '${AWS::StackName}-S3toSQSLambdaExecutionRoleARN'
+
   S3toSQSLambdaFuncation:
     Value: !Ref S3toSQSLambdaFuncation
     Description: S3toSQS Lambda Funcation
     Export:
       Name: !Sub '${AWS::StackName}-S3toSQSLambdaFuncation'
+
   MessagingQueue:
     Value: !Ref MessagingQueue
     Description: AWS SQS Queue 
     Export:
       Name: !Sub '${AWS::StackName}-MessagingQueue'
+
   DeadLetterQueue:
     Value: !Ref DeadLetterQueue
     Description: AWS SQS Dead Letter Queue  
     Export:
       Name: !Sub '${AWS::StackName}-DeadLetterQueue'
+
   MessagingQueueARN:
     Value: !GetAtt MessagingQueue.Arn
     Description: AWS SQS Queue 
     Export:
       Name: !Sub '${AWS::StackName}-MessagingQueueARN'
+
   DeadLetterQueueARN:
     Value: !GetAtt DeadLetterQueue.Arn
     Description: AWS SQS Dead Letter Queue  
     Export:
       Name: !Sub '${AWS::StackName}-DeadLetterQueueARN'
+      
   SQStoDynamoDBLambdaFuncation:
     Value: !Ref SQStoDynamoDBLambdaFuncation
     Description: SQStoDynamoDB Lambda Funcation 
