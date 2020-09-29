@@ -35,9 +35,9 @@ def image_processing():
 
         print("Image Label::: {}".format(response))
         return response
-    except ClientError as e:
-        print("Error::: {}".format(e))
-        return None
+    except ClientError as err:
+        print("Error::: {}".format(err))
+        raise ClientError(err)
 
 def record_label(label):
     try:
@@ -79,9 +79,9 @@ def record_label(label):
         operations['POST'](dynamodb_client, message)
         print('{} method successful'.format('POST'))
         return True
-    except ClientError as e:
-        print("Error::: {}".format(e))
-        return None
+    except ClientError as err:
+        print("Error::: {}".format(err))
+        raise ClientError(err)
 
 if __name__ == "__main__":
     image_label = image_processing()
