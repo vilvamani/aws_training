@@ -1,0 +1,365 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  aws-batch-image-processor.
+
+Metadata:
+  QuickStartDocumentation:
+    EntrypointName: "Launch a New VPC"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: AWS Environment Details
+        Parameters:
+          - Environment
+      - Label:
+          default: AWS Lambda Configuration
+        Parameters:
+          - EnableLambdaXRay
+    
+      - Label:
+          default: VPC network configuration
+        Parameters:
+          - VPCID
+          - SubnetID
+
+      - Label:
+          default: Amazon Batch configuration
+        Parameters:
+          - BatchAMI
+          - KeyPairName
+          
+    ParameterLabels:
+      Environment:
+        default: Name of the Environment
+      EnableLambdaXRay:
+        default: Enable XRay to trace AWS Lambda performance
+      KeyPairName:
+        default: SSH key name
+      SubnetID:
+        default: subnet ID
+      VPCID:
+        default: VPC ID
+
+Parameters:
+  Environment:
+    AllowedValues:
+      - poc
+      - demo
+      - training
+      - workshop
+      - dev
+      - test
+      - stage
+      - production
+    Default: poc
+    Description: Name of the AWS Environment
+    Type: String
+
+  EnableLambdaXRay:
+    AllowedValues:
+      - Active
+      - PassThrough
+    Default: PassThrough
+    Description: Set Mode to Active to sample and trace a subset of incoming requests with AWS X-Ray.
+    Type: String
+
+  VPCID:
+    Type: AWS::EC2::VPC::Id
+    Description: The ID of your existing VPC (e.g., vpc-0343606e)
+    Default: vpc-46dffa20
+
+  SubnetID:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: The ID of the public subnet in Availability Zone 1 in your existing VPC (e.g., subnet-a0246dcd)
+    Default: subnet-0346d2578e89104d3,subnet-06dd575f0dd5eb09f
+
+  BatchAMI:
+    Description: ECS Optimized AMI ID
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id
+
+  KeyPairName:
+    Description: The name of an existing public/private key pair, which allows you
+      to securely connect to your instance after it launches
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: magellan
+
+Resources:
+  ImageLabelTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${Environment}-imagelabel-tbl"
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: label_name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: label_name
+          KeyType: HASH
+
+  BatchContainerRole:
+    Type: AWS::IAM::Role
+    Description: AWS Batch Container IAM Role
+    Properties:
+      RoleName: !Sub "${Environment}-BatchContainerRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - ecs-tasks.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+      Policies:
+        - PolicyName: !Sub "${Environment}-labeltbl"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: 
+              - 'dynamodb:PutItem'
+              Resource: "*"
+        - PolicyName: !Sub "${Environment}-DetectImageLabels"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: 
+              - 'rekognition:DetectLabels'
+              Resource: "*"
+        - PolicyName: !Sub "${Environment}-S3GetAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: 
+              - 's3:Get*'
+              Resource:               
+              - !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket"
+              - !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket/*"
+
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Environment}-BatchServiceRole"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: 'Allow'
+          Principal:
+            Service:
+            - 'batch.amazonaws.com'
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole'
+
+  BatchInstanceIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${Environment}-BatchInstanceIAMRole"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: 'Allow'
+          Principal:
+            Service:
+            - 'ec2.amazonaws.com'
+          Action:
+          - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role'
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+
+  BatchInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${Environment}-BatchInstanceProfile"
+      Path: /
+      Roles:
+        - !Ref BatchInstanceIAMRole
+
+  BatchSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Sub "${Environment}-BatchSecurityGroup"
+      GroupDescription: EC2 Security Group for instances launched in the VPC by Batch
+      VpcId: !Ref VPCID
+
+  ImageProcessorJob:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: !Sub "${Environment}-ImageProcessorJob"
+      Type: Container
+      ContainerProperties: 
+        Image: vilvamani007/aws_batch_image_rekognition:latest
+        JobRoleArn: !Ref BatchContainerRole
+        Vcpus: 1
+        Memory: 512
+        Privileged: true
+        Environment:
+          - Name: AWS_REGION
+            Value: !Sub '${AWS::Region}'
+        Command:
+          - imageprocessing.py
+          - --bucket_name
+          - Ref::bucketName
+          - --image_name
+          - Ref::imageName
+          - --table
+          - Ref::dynamoTable
+      Parameters:
+        bucketName: !Sub "${Environment}-imageprocessing-bucket"
+        dynamoTable: !Sub "${Environment}-imagelabel-tbl"
+      RetryStrategy: 
+        Attempts: 1
+
+  ImageProcessingQueue:
+    DependsOn: ImageProcessingBatchCompute
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: !Sub "${Environment}-ImageProcessing-Queue"
+      State: ENABLED
+      Priority: 1
+      ComputeEnvironmentOrder: 
+      - ComputeEnvironment: !Ref ImageProcessingBatchCompute
+        Order: 1
+        
+  ImageProcessingBatchCompute:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      ComputeEnvironmentName: !Sub "${Environment}-ImageProcessingBatchCompute"
+      Type: MANAGED
+      State: ENABLED
+      ServiceRole: !Ref BatchServiceRole
+      ComputeResources:
+        Type: EC2
+        Ec2KeyPair: !Ref KeyPairName
+        MinvCpus: 1
+        DesiredvCpus: 1
+        MaxvCpus: 6
+        Subnets: !Ref SubnetID
+        SecurityGroupIds: 
+          - !Ref BatchSecGroup
+        ImageId: !Ref BatchAMI
+        InstanceRole: !Ref BatchInstanceProfile
+        InstanceTypes: 
+          - optimal
+
+  BatchLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Description: Lambda execution role read image from s3 bucket and Invoke AWS Batch
+    Properties:
+      RoleName: !Sub "${Environment}-BatchLambdaExecutionRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+            - edgelambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Path: "/"
+      Policies:
+        - PolicyName: !Sub "${Environment}-AmazonS3FullAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: s3:*
+              Resource: "*"
+              #- !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket"
+              #- !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket/*"
+        - PolicyName: !Sub "${Environment}-SubmitBatch"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - batch:SubmitJob
+                Resource: "*"
+        - PolicyName: !Sub "${Environment}-KMSFullAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action: KMS:*
+              Resource: "*"
+        - PolicyName: !Sub "${Environment}-XRayAccess"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: "xray:*"
+                Resource: "*"
+
+  BatchLambdaFuncation:
+    Type: AWS::Lambda::Function
+    Description: Responds to S3 Event - Sends to Batch
+    Properties:
+      Description: Responds to S3 Event - Sends to Batch
+      FunctionName: !Sub "${Environment}-invoke-batch"
+      Handler: batch_lambda.lambda_handler
+      Role: !GetAtt BatchLambdaExecutionRole.Arn
+      Runtime: python3.7
+      Timeout: 300
+      Environment: 
+        Variables:
+          JOB_QUEUE: !Ref ImageProcessingQueue
+          JOB_DEFINITION: !Ref ImageProcessorJob
+          IMAGES_TABLE: !Ref ImageLabelTable
+      TracingConfig:
+        Mode: !Ref EnableLambdaXRay
+      Code: 
+        S3Bucket: bucket546 #aws-training-lambda-bucket
+        S3Key: lambda_batch-1.0.0.zip
+
+  S3toLambdaFuncationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref BatchLambdaFuncation
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${Environment}-imageprocessing-bucket'
+      SourceAccount: !Ref AWS::AccountId
+
+  ImageProcessingBucketName:
+    DependsOn: 
+      - S3toLambdaFuncationPermission
+    Type: AWS::S3::Bucket
+    Description: Data lack S3 bucket 
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub "${Environment}-imageprocessing-bucket"
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Event: s3:ObjectCreated:*
+          Function: !GetAtt BatchLambdaFuncation.Arn
+          Filter:
+            S3Key:
+              Rules:
+                - Name: suffix
+                  Value: .png
+        - Event: s3:ObjectCreated:*
+          Function: !GetAtt BatchLambdaFuncation.Arn
+          Filter:
+            S3Key:
+              Rules:
+                - Name: suffix
+                  Value: .jpg

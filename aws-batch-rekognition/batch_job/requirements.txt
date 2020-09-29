@@ -1,0 +1,3 @@
+boto3>=1.15.6
+botocore>=1.17.61
+aws_xray_sdk
