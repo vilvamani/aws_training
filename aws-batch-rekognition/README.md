@@ -4,6 +4,7 @@ Solutions built on AWS Batch allow developers to build efficient, long-running c
 
 # AWS Batch Architectures
 
-![Amazon Batch Architecture](https://github.com/vilvamani/aws_training/blob/master/aws-batch-rekognition/docs/images/aws-btach.png)
+![Amazon Batch Architecture](https://github.com/vilvamani/aws_training/blob/master/aws-batch-rekognition/docs/images/aws-batch.png)
 
-![Amazon Batch Rekognition Architecture](https://github.com/vilvamani/aws_training/blob/master/aws-batch-rekognition/docs/images/aws_btach.png)
+# Invoke AWS Rekognition using Batch
+![Amazon Batch Rekognition Architecture](https://github.com/vilvamani/aws_training/blob/master/aws-batch-rekognition/docs/images/aws_batch.png)
