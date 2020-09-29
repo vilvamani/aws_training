@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+    AWS S3 Bucket replication
+
+Metadata:
+  QuickStartDocumentation:
+    EntrypointName: AWS S3 Replication
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: AWS Environment Details
+        Parameters:
+          - Environment
+          
+    ParameterLabels:
+      Environment:
+        default: Name of the Environment
+
+Parameters:
+  Environment:
+    AllowedValues:
+      - demo
+      - training
+      - workshop
+      - dev
+      - test
+      - stage
+      - production
+    Default: training
+    Description: Name of the AWS Environment
+    Type: String
+
+Resources:
+  ReplicationDestinationBucket:
+    Type: AWS::S3::Bucket
+    Description: AWS S3 Bucket Replication
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub "${Environment}-replication-destination-bucket"
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: "Enabled"
+
+  S3ReplicationControllerRole:
+    Type: AWS::IAM::Role
+    Description: IAM Role for s3 replication
+    Properties:
+      RoleName: !Sub "${Environment}-S3ReplicationControllerRole"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - s3.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: "/"
+      Policies:
+        - PolicyName: !Sub "${Environment}-AWSLambdaBasicExecutionRole"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - s3:Get*
+              - s3:ListBucket
+              - s3:ReplicateObject
+              - s3:ReplicateDelete
+              - s3:ReplicateTags
+              - s3:GetObjectVersionTagging
+              Resource: 
+              - !Sub arn:aws:s3:::${Environment}-replication-source-bucket
+              - !Sub arn:aws:s3:::${Environment}-replication-source-bucket/*
+              - !Sub arn:aws:s3:::${Environment}-replication-destination-bucket
+              - !Sub arn:aws:s3:::${Environment}-replication-destination-bucket/*
+
+  ReplicationSourceBucket:
+    DependsOn:
+      - ReplicationDestinationBucket
+      - S3ReplicationControllerRole
+    Type: AWS::S3::Bucket
+    Description: AWS S3 Bucket Replication
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub "${Environment}-replication-source-bucket"
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: "Enabled"
+      ReplicationConfiguration:
+        Role: !GetAtt S3ReplicationControllerRole.Arn
+        Rules:
+          - Destination:
+              Bucket: !GetAtt ReplicationDestinationBucket.Arn
+              StorageClass: STANDARD
+            Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+        - Id: GlacierRule
+          Prefix: glacier
+          Status: Enabled
+          ExpirationInDays: '365'
+          Transitions:
+            - TransitionInDays: '1'
+              StorageClass: GLACIER
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LoggingBucket
+        LogFilePrefix: testing-logs
+
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: LogDeliveryWrite
+
+Outputs:
+  ReplicationDestinationBucket:
+    Value: !Ref ReplicationDestinationBucket
+    Description: Name of the sample Amazon Destination S3 bucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ReplicationDestinationBucket'
+
+  ReplicationDestinationBucketARN:
+    Value: !GetAtt ReplicationDestinationBucket.Arn
+    Description: Name of the sample Amazon Destination S3 bucket ARN
+    Export:
+      Name: !Sub '${AWS::StackName}-ReplicationDestinationBucketArn'
+      
+  ReplicationSourceBucket:
+    Value: !Ref ReplicationSourceBucket
+    Description: Name of the sample Amazon Source S3 bucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ReplicationSourceBucket'
+
+  ReplicationSourceBucketARN:
+    Value: !GetAtt ReplicationSourceBucket.Arn
+    Description: Name of the sample Amazon Source S3 bucket ARN
+    Export:
+      Name: !Sub '${AWS::StackName}-ReplicationSourceBucketArn'
