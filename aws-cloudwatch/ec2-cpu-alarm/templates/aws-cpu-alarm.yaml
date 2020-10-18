@@ -23,7 +23,7 @@ Resources:
   AlarmNotification:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: "Billing-Alerts"
+      TopicName: "EC2CPUUtilization-Alerts"
       Subscription:
       - Protocol: email
         Endpoint: !Ref NotificationEmailID
