@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS Billing Alarm
+
+Parameters:
+  AlarmThreshold:
+    Type: String
+    Description: Trigger the alarm when billing reach
+    Default: 10
+
+  NotificationEmailID:
+    Type: String
+    Description: Enter valid email id to receive AWS SNS Notification
+    Default: vilvamani007@gmail.com
+    AllowedPattern: ^[_A-Za-z0-9-\+]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Must be a valid email address
+
+Resources:
+  BillingAlarmNotification:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "EC2CPUUtilization-Alerts"
+      Subscription:
+      - Protocol: email
+        Endpoint: !Ref NotificationEmailID
+
+  BillingAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: 
+        'Fn::Join':
+          - ''
+          - - Billing Alert - Estimated Bill Exceeds $
+            - Ref: AlarmThreshold
+      AlarmDescription: 
+        'Fn::Join':
+          - ''
+          - - Alarm if AWS spending is over $
+            - Ref: AlarmThreshold
+      Namespace: AWS/Billing
+      MetricName: EstimatedCharges
+      Dimensions:
+      - Name: Currency
+        Value: USD
+      Statistic: Maximum
+      Period: '21600'
+      EvaluationPeriods: '1'
+      Threshold:
+        Ref: "AlarmThreshold"
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+      - Ref: "BillingAlarmNotification"
+      InsufficientDataActions:
+      - Ref: "BillingAlarmNotification"

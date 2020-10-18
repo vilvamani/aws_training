@@ -1,2 +1,3 @@
 timestamp,location,source,local_dest,local_avg,remote_dest,remote_avg
-1559040909.3853335,location-03,wireless,router-1,4.44,device-1,8.88
+1559040909,location-03,wireless,router-1,4.44,device-1,8.88
+1559040910,location-04,wireless,router-1,4.44,device-1,8.88

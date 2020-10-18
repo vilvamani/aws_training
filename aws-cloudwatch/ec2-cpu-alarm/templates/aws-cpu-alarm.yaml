@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  AWS Billing Alarm
+
+Parameters:
+  CPUThreshold:
+    Type: String
+    Description: Trigger the alarm when billing reach
+    Default: 60
+
+  EC2InstanceID:
+    Type: AWS::EC2::Instance::Id
+    Description: EC2 Instance Id
+
+  NotificationEmailID:
+    Type: String
+    Description: Enter valid email id to receive AWS SNS Notification
+    Default: vilvamani007@gmail.com
+    AllowedPattern: ^[_A-Za-z0-9-\+]+(\.[_A-Za-z0-9-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9]+)*(\.[A-Za-z]{2,})$
+    ConstraintDescription: Must be a valid email address
+
+Resources:
+  AlarmNotification:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "Billing-Alerts"
+      Subscription:
+      - Protocol: email
+        Endpoint: !Ref NotificationEmailID
+
+  EC2CPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: CPU alarm for my instance
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: InstanceId
+          Value:
+            Ref: "EC2InstanceID"
+      Statistic: Average
+      Period: '60'
+      EvaluationPeriods: '3'
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 
+        Ref: "CPUThreshold"
+      AlarmActions:
+      - Ref: "AlarmNotification"
+      InsufficientDataActions:
+      - Ref: "AlarmNotification"
