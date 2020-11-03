@@ -10,20 +10,20 @@ Metadata:
       - Label:
           default: AWS Environment Details
         Parameters:
-          - Environment
+          - StackEnv
       - Label:
           default: AWS Lambda Configuration
         Parameters:
           - EnableLambdaXRay
           
     ParameterLabels:
-      Environment:
+      StackEnv:
         default: Name of the Environment
       EnableLambdaXRay:
         default: Enable XRay to trace AWS Lambda performance
 
 Parameters:
-  Environment:
+  StackEnv:
     AllowedValues:
       - demo
       - training
@@ -47,7 +47,7 @@ Resources:
   DynamoDBTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "${Environment}-datalack-tbl"
+      TableName: !Sub "${StackEnv}-datalack-tbl"
       BillingMode: PAY_PER_REQUEST
       SSESpecification:
         SSEEnabled: true
@@ -66,7 +66,7 @@ Resources:
     Type: AWS::SQS::Queue
     Description: Messaging Queue to decouple the Microservices
     Properties:
-      QueueName: !Sub "${Environment}-datalack-queue"
+      QueueName: !Sub "${StackEnv}-datalack-queue"
       MaximumMessageSize: 262144 # The limit of how many bytes that a message can contain before Amazon SQS rejects it. You can specify an integer value from 1,024 bytes (1 KiB) to 262,144 bytes (256 KiB). The default value is 262,144 (256 KiB).
       MessageRetentionPeriod: 86400
       RedrivePolicy:
@@ -81,14 +81,14 @@ Resources:
     Type: AWS::SQS::Queue
     Description: Dead leter queue to save failed message
     Properties:
-      QueueName: !Sub "${Environment}-datalack-deadletterqueue"
+      QueueName: !Sub "${StackEnv}-datalack-deadletterqueue"
       VisibilityTimeout: 60
 
   S3toSQSLambdaExecutionRole:
     Type: AWS::IAM::Role
     Description: Lambda execution role read data from s3 bucket
     Properties:
-      RoleName: !Sub "${Environment}-S3toSQSLambdaExecutionRole"
+      RoleName: !Sub "${StackEnv}-S3toSQSLambdaExecutionRole"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -101,7 +101,7 @@ Resources:
           - sts:AssumeRole
       Path: "/"
       Policies:
-        - PolicyName: !Sub "${Environment}-AWSLambdaBasicExecutionRole"
+        - PolicyName: !Sub "${StackEnv}-AWSLambdaBasicExecutionRole"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -111,16 +111,16 @@ Resources:
               - logs:CreateLogStream
               - logs:PutLogEvents
               Resource: "*"
-        - PolicyName: !Sub "${Environment}-AmazonS3FullAccess"
+        - PolicyName: !Sub "${StackEnv}-AmazonS3FullAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
             - Effect: Allow
               Action: s3:*
               Resource:
-              - !Sub "arn:aws:s3:::${Environment}-datalack"
-              - !Sub "arn:aws:s3:::${Environment}-datalack/*"
-        - PolicyName: !Sub "${Environment}-produceToQueue"
+              - !Sub "arn:aws:s3:::${StackEnv}-datalack"
+              - !Sub "arn:aws:s3:::${StackEnv}-datalack/*"
+        - PolicyName: !Sub "${StackEnv}-produceToQueue"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -128,14 +128,14 @@ Resources:
                 Action:
                   - sqs:SendMessage
                 Resource: !GetAtt MessagingQueue.Arn
-        - PolicyName: !Sub "${Environment}-KMSFullAccess"
+        - PolicyName: !Sub "${StackEnv}-KMSFullAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
             - Effect: Allow
               Action: KMS:*
               Resource: "*"
-        - PolicyName: !Sub "${Environment}-XRayAccess"
+        - PolicyName: !Sub "${StackEnv}-XRayAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -148,7 +148,7 @@ Resources:
     Description: Responds to S3 Event - Sends to SQS
     Properties:
       Description: Responds to S3 Event - Sends to SQS
-      FunctionName: !Sub "${Environment}-S3toSQSLambdaFuncation"
+      FunctionName: !Sub "${StackEnv}-S3toSQSLambdaFuncation"
       Handler: lambda.lambda_handler
       Role: !GetAtt S3toSQSLambdaExecutionRole.Arn
       Runtime: python3.7
@@ -169,7 +169,7 @@ Resources:
       Action: 'lambda:InvokeFunction'
       FunctionName: !Ref S3toSQSLambdaFuncation
       Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::${Environment}-datalack'
+      SourceArn: !Sub 'arn:aws:s3:::${StackEnv}-datalack'
       SourceAccount: !Ref AWS::AccountId
 
   DataLackBucketName:
@@ -179,7 +179,7 @@ Resources:
     Description: Data lack S3 bucket 
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub "${Environment}-datalack"
+      BucketName: !Sub "${StackEnv}-datalack"
       AccessControl: Private
       BucketEncryption:
         ServerSideEncryptionConfiguration:
@@ -199,7 +199,7 @@ Resources:
     Type: AWS::IAM::Role
     Description: Lambda execution role read data from s3 bucket
     Properties:
-      RoleName: !Sub "${Environment}-SQStoDynamoDBLambdaExecutionRole"
+      RoleName: !Sub "${StackEnv}-SQStoDynamoDBLambdaExecutionRole"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -212,7 +212,7 @@ Resources:
           - sts:AssumeRole
       Path: "/"
       Policies:
-        - PolicyName: !Sub "${Environment}-AWSLambdaBasicExecutionRole"
+        - PolicyName: !Sub "${StackEnv}-AWSLambdaBasicExecutionRole"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -222,7 +222,7 @@ Resources:
               - logs:CreateLogStream
               - logs:PutLogEvents
               Resource: "*"
-        - PolicyName: !Sub "${Environment}-AmazonDynamodbAccess"
+        - PolicyName: !Sub "${StackEnv}-AmazonDynamodbAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -231,7 +231,7 @@ Resources:
                 - dynamodb:PutItem
                 - dynamodb:UpdateItem
               Resource: !GetAtt DynamoDBTable.Arn
-        - PolicyName: !Sub "${Environment}-SubscribeToQueueAccess"
+        - PolicyName: !Sub "${StackEnv}-SubscribeToQueueAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -243,14 +243,14 @@ Resources:
                   - sqs:DeleteMessageBatch
                   - sqs:ReceiveMessage
                 Resource: !GetAtt MessagingQueue.Arn
-        - PolicyName: !Sub "${Environment}-KMSFullAccess"
+        - PolicyName: !Sub "${StackEnv}-KMSFullAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
             - Effect: Allow
               Action: KMS:*
               Resource: "*"
-        - PolicyName: !Sub "${Environment}-XRayAccess"
+        - PolicyName: !Sub "${StackEnv}-XRayAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -263,7 +263,7 @@ Resources:
     Description: Responds to SQS Event - Sends to Dynamodb
     Properties:
       Description: Post new message from SQS to DynamoDB
-      FunctionName: !Sub "${Environment}-SQStoDynamoDBLambdaFuncation"
+      FunctionName: !Sub "${StackEnv}-SQStoDynamoDBLambdaFuncation"
       Handler: lambda.lambda_handler
       Role: !GetAtt SQStoDynamoDBLambdaExecutionRole.Arn
       Runtime: python3.7

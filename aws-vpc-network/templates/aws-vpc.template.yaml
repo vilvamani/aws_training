@@ -15,7 +15,7 @@ Metadata:
       - Label:
           default: AWS Environment Details
         Parameters:
-          - Environment
+          - StackEnv
       - Label:
           default: AWS Network Configuration
         Parameters:
@@ -26,7 +26,7 @@ Metadata:
           - CreateNATGateways
           - CreateS3VPCEndPoint
     ParameterLabels:
-      Environment:
+      StackEnv:
         default: Name of the Environment
       NumberOfAZs:
         default: Number of Availability Zones
@@ -55,7 +55,7 @@ Mappings:
       cidrBits: 12
 
 Parameters:
-  Environment:
+  StackEnv:
     AllowedValues:
       - 'demo'
       - 'training'
@@ -162,7 +162,7 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-vpc"
+          Value: !Sub "${StackEnv}-vpc"
   
   #Associate newly created DHCP Option Set to VPC
   VPCDHCPOptionsAssociation:
@@ -178,7 +178,7 @@ Resources:
     Properties:
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-igw"
+          Value: !Sub "${StackEnv}-igw"
 
   #Attach newly created Internet Gateway to VPC
   VPCGatewayAttachment:
@@ -201,7 +201,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-publicsubnet1"
+          Value: !Sub "${StackEnv}-publicsubnet1"
         - Key: Network
           Value: Public
   PublicSubnet2:
@@ -216,7 +216,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-publicsubnet2"
+          Value: !Sub "${StackEnv}-publicsubnet2"
         - Key: Network
           Value: Public
   PublicSubnet3:
@@ -232,7 +232,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-publicsubnet3"
+          Value: !Sub "${StackEnv}-publicsubnet3"
         - Key: Network
           Value: Public
   PublicSubnet4:
@@ -248,7 +248,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-publicsubnet4"
+          Value: !Sub "${StackEnv}-publicsubnet4"
         - Key: Network
           Value: Public
 
@@ -259,7 +259,7 @@ Resources:
       VpcId: !Ref 'VPC'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-public-routetable"
+          Value: !Sub "${StackEnv}-public-routetable"
         - Key: Network
           Value: Public
   PublicSubnetRoute:
@@ -304,7 +304,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-privatesubnet1"
+          Value: !Sub "${StackEnv}-privatesubnet1"
         - Key: Network
           Value: Private
   PrivateSubnet2:
@@ -318,7 +318,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-privatesubnet2"
+          Value: !Sub "${StackEnv}-privatesubnet2"
         - Key: Network
           Value: Private
   PrivateSubnet3:
@@ -333,7 +333,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-privatesubnet3"
+          Value: !Sub "${StackEnv}-privatesubnet3"
         - Key: Network
           Value: Private
   PrivateSubnet4:
@@ -348,7 +348,7 @@ Resources:
           Ref: 'AWS::Region'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-privatesubnet4"
+          Value: !Sub "${StackEnv}-privatesubnet4"
         - Key: Network
           Value: Private
 
@@ -361,7 +361,7 @@ Resources:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-nateip1"
+          Value: !Sub "${StackEnv}-nateip1"
 
   #Create NAT Gateway
   NATGateway:
@@ -373,7 +373,7 @@ Resources:
       SubnetId: !Ref 'PublicSubnet1'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-natgateway"
+          Value: !Sub "${StackEnv}-natgateway"
 
   #Create Route Table for Private Subnet
   PrivateSubnetRouteTable:
@@ -382,7 +382,7 @@ Resources:
       VpcId: !Ref 'VPC'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-private-routetable"
+          Value: !Sub "${StackEnv}-private-routetable"
         - Key: Network
           Value: Private
   PrivateSubnetRoute:
@@ -431,7 +431,7 @@ Resources:
       VpcId: !Ref 'VPC'
       Tags:
         - Key: Name
-          Value: !Sub "${Environment}-s3vpc-endpoint"
+          Value: !Sub "${StackEnv}-s3vpc-endpoint"
 Outputs:
   VPCID:
     Value: !Ref 'VPC'

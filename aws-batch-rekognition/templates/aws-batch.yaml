@@ -10,7 +10,7 @@ Metadata:
       - Label:
           default: AWS Environment Details
         Parameters:
-          - Environment
+          - StackEnv
       - Label:
           default: AWS Lambda Configuration
         Parameters:
@@ -29,7 +29,7 @@ Metadata:
           - KeyPairName
           
     ParameterLabels:
-      Environment:
+      StackEnv:
         default: Name of the Environment
       EnableLambdaXRay:
         default: Enable XRay to trace AWS Lambda performance
@@ -41,7 +41,7 @@ Metadata:
         default: VPC ID
 
 Parameters:
-  Environment:
+  StackEnv:
     AllowedValues:
       - poc
       - demo
@@ -82,13 +82,13 @@ Parameters:
     Description: The name of an existing public/private key pair, which allows you
       to securely connect to your instance after it launches
     Type: AWS::EC2::KeyPair::KeyName
-    Default: magellan
+    Default: test
 
 Resources:
   ImageLabelTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub "${Environment}-imagelabel-tbl"
+      TableName: !Sub "${StackEnv}-imagelabel-tbl"
       BillingMode: PAY_PER_REQUEST
       SSESpecification:
         SSEEnabled: true
@@ -103,7 +103,7 @@ Resources:
     Type: AWS::IAM::Role
     Description: AWS Batch Container IAM Role
     Properties:
-      RoleName: !Sub "${Environment}-BatchContainerRole"
+      RoleName: !Sub "${StackEnv}-BatchContainerRole"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -117,7 +117,7 @@ Resources:
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
       Policies:
-        - PolicyName: !Sub "${Environment}-labeltbl"
+        - PolicyName: !Sub "${StackEnv}-labeltbl"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -125,7 +125,7 @@ Resources:
               Action: 
               - 'dynamodb:PutItem'
               Resource: "*"
-        - PolicyName: !Sub "${Environment}-DetectImageLabels"
+        - PolicyName: !Sub "${StackEnv}-DetectImageLabels"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -133,7 +133,7 @@ Resources:
               Action: 
               - 'rekognition:DetectLabels'
               Resource: "*"
-        - PolicyName: !Sub "${Environment}-S3GetAccess"
+        - PolicyName: !Sub "${StackEnv}-S3GetAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -141,13 +141,13 @@ Resources:
               Action: 
               - 's3:Get*'
               Resource:               
-              - !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket"
-              - !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket/*"
+              - !Sub "arn:aws:s3:::${StackEnv}-imageprocessing-bucket"
+              - !Sub "arn:aws:s3:::${StackEnv}-imageprocessing-bucket/*"
 
   BatchServiceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${Environment}-BatchServiceRole"
+      RoleName: !Sub "${StackEnv}-BatchServiceRole"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -163,7 +163,7 @@ Resources:
   BatchInstanceIAMRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "${Environment}-BatchInstanceIAMRole"
+      RoleName: !Sub "${StackEnv}-BatchInstanceIAMRole"
       AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -181,7 +181,7 @@ Resources:
   BatchInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Sub "${Environment}-BatchInstanceProfile"
+      InstanceProfileName: !Sub "${StackEnv}-BatchInstanceProfile"
       Path: /
       Roles:
         - !Ref BatchInstanceIAMRole
@@ -189,14 +189,14 @@ Resources:
   BatchSecGroup:
     Type: AWS::EC2::SecurityGroup
     Properties: 
-      GroupName: !Sub "${Environment}-BatchSecurityGroup"
+      GroupName: !Sub "${StackEnv}-BatchSecurityGroup"
       GroupDescription: EC2 Security Group for instances launched in the VPC by Batch
       VpcId: !Ref VPCID
 
   ImageProcessorJob:
     Type: AWS::Batch::JobDefinition
     Properties:
-      JobDefinitionName: !Sub "${Environment}-ImageProcessorJob"
+      JobDefinitionName: !Sub "${StackEnv}-ImageProcessorJob"
       Type: Container
       ContainerProperties: 
         Image: vilvamani007/aws_batch_image_rekognition:latest
@@ -216,8 +216,8 @@ Resources:
           - --table
           - Ref::dynamoTable
       Parameters:
-        bucketName: !Sub "${Environment}-imageprocessing-bucket"
-        dynamoTable: !Sub "${Environment}-imagelabel-tbl"
+        bucketName: !Sub "${StackEnv}-imageprocessing-bucket"
+        dynamoTable: !Sub "${StackEnv}-imagelabel-tbl"
       RetryStrategy: 
         Attempts: 1
 
@@ -225,7 +225,7 @@ Resources:
     DependsOn: ImageProcessingBatchCompute
     Type: AWS::Batch::JobQueue
     Properties:
-      JobQueueName: !Sub "${Environment}-ImageProcessing-Queue"
+      JobQueueName: !Sub "${StackEnv}-ImageProcessing-Queue"
       State: ENABLED
       Priority: 1
       ComputeEnvironmentOrder: 
@@ -235,7 +235,7 @@ Resources:
   ImageProcessingBatchCompute:
     Type: AWS::Batch::ComputeEnvironment
     Properties:
-      ComputeEnvironmentName: !Sub "${Environment}-ImageProcessingBatchCompute"
+      ComputeEnvironmentName: !Sub "${StackEnv}-ImageProcessingBatchCompute"
       Type: MANAGED
       State: ENABLED
       ServiceRole: !Ref BatchServiceRole
@@ -257,7 +257,7 @@ Resources:
     Type: AWS::IAM::Role
     Description: Lambda execution role read image from s3 bucket and Invoke AWS Batch
     Properties:
-      RoleName: !Sub "${Environment}-BatchLambdaExecutionRole"
+      RoleName: !Sub "${StackEnv}-BatchLambdaExecutionRole"
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -272,16 +272,16 @@ Resources:
         - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       Path: "/"
       Policies:
-        - PolicyName: !Sub "${Environment}-AmazonS3FullAccess"
+        - PolicyName: !Sub "${StackEnv}-AmazonS3FullAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
             - Effect: Allow
               Action: s3:*
               Resource: "*"
-              #- !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket"
-              #- !Sub "arn:aws:s3:::${Environment}-imageprocessing-bucket/*"
-        - PolicyName: !Sub "${Environment}-SubmitBatch"
+              #- !Sub "arn:aws:s3:::${StackEnv}-imageprocessing-bucket"
+              #- !Sub "arn:aws:s3:::${StackEnv}-imageprocessing-bucket/*"
+        - PolicyName: !Sub "${StackEnv}-SubmitBatch"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -289,14 +289,14 @@ Resources:
                 Action:
                   - batch:SubmitJob
                 Resource: "*"
-        - PolicyName: !Sub "${Environment}-KMSFullAccess"
+        - PolicyName: !Sub "${StackEnv}-KMSFullAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
             - Effect: Allow
               Action: KMS:*
               Resource: "*"
-        - PolicyName: !Sub "${Environment}-XRayAccess"
+        - PolicyName: !Sub "${StackEnv}-XRayAccess"
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -309,7 +309,7 @@ Resources:
     Description: Responds to S3 Event - Sends to Batch
     Properties:
       Description: Responds to S3 Event - Sends to Batch
-      FunctionName: !Sub "${Environment}-invoke-batch"
+      FunctionName: !Sub "${StackEnv}-invoke-batch"
       Handler: batch_lambda.lambda_handler
       Role: !GetAtt BatchLambdaExecutionRole.Arn
       Runtime: python3.7
@@ -331,7 +331,7 @@ Resources:
       Action: 'lambda:InvokeFunction'
       FunctionName: !Ref BatchLambdaFuncation
       Principal: s3.amazonaws.com
-      SourceArn: !Sub 'arn:aws:s3:::${Environment}-imageprocessing-bucket'
+      SourceArn: !Sub 'arn:aws:s3:::${StackEnv}-imageprocessing-bucket'
       SourceAccount: !Ref AWS::AccountId
 
   ImageProcessingBucketName:
@@ -341,7 +341,7 @@ Resources:
     Description: Data lack S3 bucket 
     DeletionPolicy: Delete
     Properties:
-      BucketName: !Sub "${Environment}-imageprocessing-bucket"
+      BucketName: !Sub "${StackEnv}-imageprocessing-bucket"
       AccessControl: Private
       BucketEncryption:
         ServerSideEncryptionConfiguration:
